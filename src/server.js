@@ -2,9 +2,19 @@ import 'dotenv/config';
 
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { seedRootPlatformUser } from './modules/platform-users/platform-user.service.js';
 
-const app = createApp();
+async function bootstrap() {
+  await seedRootPlatformUser();
 
-app.listen(env.port, () => {
-  console.log(`${env.appName} is running on port ${env.port}`);
+  const app = createApp();
+
+  app.listen(env.port, () => {
+    console.log(`${env.appName} is running on port ${env.port}`);
+  });
+}
+
+bootstrap().catch((error) => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });
