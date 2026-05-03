@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import argon2 from 'argon2';
 
 import { env } from '../../config/env.js';
@@ -27,10 +28,16 @@ function generateNextUserCode(latestUserCode) {
   return String(nextNumber).padStart(10, '0');
 }
 
-function validateCreatePlatformUserPayload(payload) {
+function generateRandomPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
+  const bytes = crypto.randomBytes(18);
+
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
+
+function validatePlatformUserIdentityPayload(payload) {
   const email = String(payload.email ?? '').trim().toLowerCase();
   const fullName = String(payload.fullName ?? '').trim();
-  const password = String(payload.password ?? '');
 
   if (!email) {
     throw new AppError('Email is required.', 400);
@@ -44,19 +51,28 @@ function validateCreatePlatformUserPayload(payload) {
     throw new AppError('Full name is required.', 400);
   }
 
-  if (password.length < 8) {
-    throw new AppError('Password must be at least 8 characters.', 400);
-  }
-
   return {
     email,
     fullName,
+  };
+}
+
+function validateRootPlatformUserPayload(payload) {
+  const validatedIdentity = validatePlatformUserIdentityPayload(payload);
+  const password = String(payload.password ?? '');
+
+  if (password.length < 8) {
+    throw new AppError('Root password must be at least 8 characters.', 400);
+  }
+
+  return {
+    ...validatedIdentity,
     password,
   };
 }
 
 export async function createPlatformUserService(payload) {
-  const validatedPayload = validateCreatePlatformUserPayload(payload);
+  const validatedPayload = validatePlatformUserIdentityPayload(payload);
 
   const existingUser = await findPlatformUserByEmail(validatedPayload.email);
 
@@ -66,16 +82,22 @@ export async function createPlatformUserService(payload) {
 
   const latestUserCode = await getLatestUserCode();
   const userCode = generateNextUserCode(latestUserCode);
-  const passwordHash = await argon2.hash(validatedPayload.password, {
+  const generatedPassword = generateRandomPassword();
+  const passwordHash = await argon2.hash(generatedPassword, {
     type: argon2.argon2id,
   });
 
-  return createPlatformUser({
+  const user = await createPlatformUser({
     userCode,
     email: validatedPayload.email,
     fullName: validatedPayload.fullName,
     passwordHash,
   });
+
+  return {
+    ...user,
+    generatedPassword,
+  };
 }
 
 export async function seedRootPlatformUser() {
@@ -92,7 +114,7 @@ export async function seedRootPlatformUser() {
     password: env.root.password,
   };
 
-  const validatedPayload = validateCreatePlatformUserPayload(rootPayload);
+  const validatedPayload = validateRootPlatformUserPayload(rootPayload);
   const existingEmailUser = await findPlatformUserByEmail(validatedPayload.email);
 
   if (existingEmailUser) {
