@@ -21,6 +21,26 @@ export async function findPlatformUserByEmail(email) {
   return result.rows[0] ?? null;
 }
 
+export async function findRootPlatformUser() {
+  const result = await query(
+    `
+      SELECT
+        "UserID",
+        "UserCode",
+        "Email",
+        "FullName",
+        "Status",
+        "IsRoot",
+        "CreatedAt"
+      FROM public."PlatformUsers"
+      WHERE "IsRoot" = true
+      LIMIT 1;
+    `
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function getLatestUserCode() {
   const result = await query(
     `
