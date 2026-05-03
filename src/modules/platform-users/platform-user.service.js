@@ -1,9 +1,11 @@
 import argon2 from 'argon2';
 
+import { env } from '../../config/env.js';
 import { AppError } from '../../utils/app-error.js';
 import {
   createPlatformUser,
   findPlatformUserByEmail,
+  findRootPlatformUser,
   getLatestUserCode,
 } from './platform-user.repository.js';
 
@@ -74,4 +76,43 @@ export async function createPlatformUserService(payload) {
     fullName: validatedPayload.fullName,
     passwordHash,
   });
+}
+
+export async function seedRootPlatformUser() {
+  const existingRootUser = await findRootPlatformUser();
+
+  if (existingRootUser) {
+    console.log(`Root platform user already exists: ${existingRootUser.Email}`);
+    return existingRootUser;
+  }
+
+  const rootPayload = {
+    email: env.root.email,
+    fullName: env.root.fullName,
+    password: env.root.password,
+  };
+
+  const validatedPayload = validateCreatePlatformUserPayload(rootPayload);
+  const existingEmailUser = await findPlatformUserByEmail(validatedPayload.email);
+
+  if (existingEmailUser) {
+    throw new AppError('Root email already exists but is not marked as root.', 409);
+  }
+
+  const latestUserCode = await getLatestUserCode();
+  const userCode = generateNextUserCode(latestUserCode);
+  const passwordHash = await argon2.hash(validatedPayload.password, {
+    type: argon2.argon2id,
+  });
+
+  const rootUser = await createPlatformUser({
+    userCode,
+    email: validatedPayload.email,
+    fullName: validatedPayload.fullName,
+    passwordHash,
+    isRoot: true,
+  });
+
+  console.log(`Root platform user created: ${rootUser.Email}`);
+  return rootUser;
 }
